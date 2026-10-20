@@ -1,0 +1,420 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<meta name="theme-color" content="#161616">
+<title>Automatic Solar Tracker</title>
+<style>
+:root {
+  --bg: #161616;
+  --card: #262626;
+  --card-hi: #2b2b2b;
+  --line: #363636;
+  --line-hi: #444444;
+  --text: #f2f2f2;
+  --muted: #9b9b9b;
+  --faint: #6a6a6a;
+  --gold: #f2f2f2;
+  --gold-hi: #ffffff;
+  --gold-dim: rgba(255, 255, 255, .12);
+  --warn: #ff6b7d;
+}
+
+* { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+
+html, body {
+  margin: 0;
+  padding: 0;
+  height: 100%;
+  background: var(--bg);
+  color: var(--text);
+  overflow-y: auto;
+  font-family: "Segoe UI", system-ui, -apple-system, Roboto, "Helvetica Neue", Arial, sans-serif;
+  overflow-x: hidden;
+}
+
+body {
+  background:
+    var(--bg);
+}
+
+/* ---------- เต็มจอ ---------- */
+.app {
+  width: 100%;
+  height: 100vh;
+  height: 100dvh;
+  min-height: 540px;          /* จอเตี้ยมากๆ ค่อยเลื่อน */
+  max-width: 560px;
+  margin: 0 auto;
+  padding: max(10px, env(safe-area-inset-top)) 12px max(10px, env(safe-area-inset-bottom));
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.app > .card { flex: none; }
+
+/* ---------- Card ---------- */
+.card {
+  position: relative;
+  padding: 11px 16px;
+  border-radius: 16px;
+  background: linear-gradient(180deg, var(--card-hi) 0%, var(--card) 100%);
+  border: 1px solid var(--line);
+  box-shadow: 0 10px 30px rgba(0, 0, 0, .45), inset 0 1px 0 rgba(255, 255, 255, .035);
+}
+.card::after {                       /* เส้นประกายบางๆ ขอบบน */
+  content: "";
+  position: absolute; left: 18px; right: 18px; top: 0; height: 1px;
+  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, .16), transparent);
+  opacity: .7;
+}
+
+.label {
+  font-size: 10.5px;
+  font-weight: 600;
+  color: var(--muted);
+  letter-spacing: 1.8px;
+  text-transform: uppercase;
+}
+.big {
+  font-size: 24px;
+  font-weight: 300;
+  letter-spacing: .5px;
+  font-variant-numeric: tabular-nums;
+  color: var(--text);
+}
+.big small { font-size: 14px; color: var(--muted); font-weight: 400; margin-left: 2px; }
+.pin { font-size: 9px; color: var(--faint); margin-top: 3px; letter-spacing: 1.2px; }
+
+/* ---------- LDR ---------- */
+.pair { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.ldr { text-align: center; padding: 10px 8px; }
+.ldr .big { margin-top: 4px; font-size: 21px; color: #fff; }
+
+/* ---------- Row ---------- */
+.row { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.left { min-width: 0; }
+.temp .big.hot { color: var(--warn); }
+
+/* ---------- Mode ---------- */
+.mode-btn {
+  flex: none;
+  min-width: 112px;
+  padding: 11px 20px;
+  border-radius: 10px;
+  border: 1px solid rgba(255, 255, 255, .5);
+  background: transparent;
+  color: var(--gold-hi);
+  font: inherit;
+  font-size: 11.5px;
+  font-weight: 700;
+  letter-spacing: 2px;
+  cursor: pointer;
+  transition: background .25s, color .25s, border-color .25s, transform .1s;
+}
+.mode-btn:active { transform: scale(.97); }
+.mode-btn.manual {
+  background: #ffffff;
+  color: #161616;
+  border-color: transparent;
+}
+.mode-btn:disabled { opacity: .6; }
+
+/* ---------- Servo gauge ---------- */
+.app > .servo { flex: 1 1 0; min-height: 0; display: flex; flex-direction: column; }
+.gauge-wrap {
+  flex: 1 1 0;
+  display: flex; align-items: center; justify-content: center;
+  min-height: 0;
+  margin-top: 2px;
+}
+.gauge-wrap svg { width: 100%; height: 100%; max-width: 400px; display: block; }
+#dot { transform-origin: 150px 150px; transition: transform .5s cubic-bezier(.22, .8, .3, 1); }
+
+/* ---------- Manual ---------- */
+.manual-card .readout { font-size: 22px; }
+.slider-box { margin-top: 6px; transition: opacity .25s; }
+.manual-card.locked .slider-box { opacity: .3; pointer-events: none; }
+
+input[type=range] {
+  -webkit-appearance: none; appearance: none;
+  width: 100%; height: 34px; margin: 0;
+  background: transparent; touch-action: none; cursor: pointer;
+}
+input[type=range]::-webkit-slider-runnable-track {
+  height: 16px; border-radius: 99px;
+  background: #1c1c1c;
+  box-shadow: inset 0 1px 3px rgba(0, 0, 0, .55);
+}
+input[type=range]::-moz-range-track {
+  height: 16px; border-radius: 99px; background: #1c1c1c;
+  box-shadow: inset 0 1px 3px rgba(0, 0, 0, .55);
+}
+input[type=range]::-webkit-slider-thumb {
+  -webkit-appearance: none; appearance: none;
+  width: 30px; height: 30px; margin-top: -7px; border-radius: 50%;
+  background: #ffffff;
+  border: 5px solid #272727;
+  box-shadow: 0 0 0 4px rgba(255, 255, 255, .16), 0 4px 12px rgba(0, 0, 0, .6);
+}
+input[type=range]::-moz-range-thumb {
+  width: 20px; height: 20px; border-radius: 50%;
+  background: #ffffff;
+  border: 5px solid #272727;
+  box-shadow: 0 0 0 4px rgba(255, 255, 255, .16);
+}
+
+.scale { display: flex; justify-content: space-between; font-size: 10px; color: var(--muted); margin-top: 4px; letter-spacing: .5px; }
+
+
+</style>
+</head>
+<body>
+<div class="app">
+
+  <div class="pair">
+    <div class="card ldr">
+      <div class="label">LDR (Up)</div>
+      <div class="big" id="ldrUp">--</div>
+      <div class="pin">V0</div>
+    </div>
+    <div class="card ldr">
+      <div class="label">LDR (Down)</div>
+      <div class="big" id="ldrDown">--</div>
+      <div class="pin">V1</div>
+    </div>
+  </div>
+
+  <div class="card temp">
+    <div class="row">
+      <div class="left">
+        <div class="label">Temperature</div>
+        <div class="pin">V2</div>
+      </div>
+      <div class="big" id="temperature">--<small>°C</small></div>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="row">
+      <div class="left">
+        <div class="label">Mode</div>
+        <div class="pin">V5</div>
+      </div>
+      <button class="mode-btn" id="modeButton" onclick="toggleMode()">AUTO</button>
+    </div>
+  </div>
+
+  <div class="card servo">
+    <div class="left">
+      <div class="label">Servo Position</div>
+      <div class="pin">V4</div>
+    </div>
+    <div class="gauge-wrap">
+      <svg viewBox="0 0 300 180" aria-hidden="true">
+        <defs>
+          <linearGradient id="dotGrad" x1="0" y1="0" x2="1" y2="1">
+            <stop offset="0" stop-color="#ffffff"/>
+            <stop offset="1" stop-color="#d9d9d9"/>
+          </linearGradient>
+        </defs>
+
+        <!-- arc -->
+        <path d="M 40 150 A 110 110 0 0 1 260 150" fill="none" stroke="#1c1c1c" stroke-width="18" stroke-linecap="round"/>
+
+        <!-- dot -->
+        <g id="dot">
+          <circle cx="150" cy="40" r="21" fill="#ffffff" opacity=".12"/>
+          <circle cx="150" cy="40" r="13" fill="url(#dotGrad)" stroke="#272727" stroke-width="4"/>
+        </g>
+
+        <!-- value -->
+        <text id="servoValue" x="150" y="140" text-anchor="middle" font-size="50" font-weight="300" fill="#f2f2f2" font-family="Segoe UI, system-ui, Arial, sans-serif">--°</text>
+        <text x="150" y="162" text-anchor="middle" font-size="10" font-weight="600" fill="#9b9b9b" letter-spacing="2.4" font-family="Segoe UI, system-ui, Arial, sans-serif">DEGREES</text>
+
+        <!-- scale -->
+        <g fill="#6a6a6a" font-size="9" font-family="Segoe UI, system-ui, Arial, sans-serif" letter-spacing=".5">
+          <text x="40" y="178" text-anchor="middle">0°</text>
+          <text x="260" y="178" text-anchor="middle">180°</text>
+        </g>
+      </svg>
+    </div>
+  </div>
+
+  <div class="card manual-card locked" id="manualCard">
+    <div class="row">
+      <div class="left">
+        <div class="label">Manual Servo Control</div>
+        <div class="pin">V3</div>
+      </div>
+      <div class="big readout" id="sliderValue">90°</div>
+    </div>
+    <div class="slider-box">
+      <input type="range" id="servoSlider" min="0" max="180" value="90" step="1" disabled>
+      <div class="scale"><span>0°</span><span>90°</span><span>180°</span></div>
+    </div>
+  </div>
+
+</div>
+
+<script>
+const AUTH_TOKEN = "FZZJK26JIlGMjoHF-3xyIf6kzTCOf2ID";
+const API = "https://blynk.cloud/external/api";
+const TEMP_LIMIT = 40;
+
+// ตรงกับ Datastream ใน Blynk Template
+const PIN = { LDR_UP: 0, LDR_DOWN: 1, TEMP: 2, SERVO_CTRL: 3, SERVO_POS: 4, MODE: 5 };
+
+let currentMode = 0;
+let dragging = false;
+let modeLockUntil = 0;
+let lastSliderSend = 0;
+let lastSent = -1;
+let refreshing = false;
+
+const $ = id => document.getElementById(id);
+
+function setFill() {}   // เก็บไว้ให้โค้ดเดิมเรียกได้ (ไม่ใช้แล้ว)
+
+async function apiGet(pin) {
+  const r = await fetch(API + "/get?token=" + encodeURIComponent(AUTH_TOKEN) + "&V" + pin, { cache: "no-store" });
+  const text = await r.text();
+  if (!r.ok) throw new Error("V" + pin + " HTTP " + r.status + ": " + text);
+  let v;
+  try { v = JSON.parse(text); } catch { v = text.trim(); }
+  if (Array.isArray(v)) v = v[0];
+  return Number(v);
+}
+
+async function writePin(pin, value) {
+  const r = await fetch(API + "/update?token=" + encodeURIComponent(AUTH_TOKEN) + "&V" + pin + "=" + encodeURIComponent(value), { cache: "no-store" });
+  if (!r.ok) throw new Error("Write V" + pin + " HTTP " + r.status + ": " + await r.text());
+}
+
+function renderMode(mode) {
+  currentMode = mode === 1 ? 1 : 0;
+  const btn = $("modeButton");
+  const slider = $("servoSlider");
+  if (currentMode === 0) {
+    btn.textContent = "AUTO";
+    btn.classList.remove("manual");
+    slider.disabled = true;
+    $("manualCard").classList.add("locked");
+  } else {
+    btn.textContent = "MANUAL";
+    btn.classList.add("manual");
+    slider.disabled = false;
+    $("manualCard").classList.remove("locked");
+  }
+}
+
+function renderGauge(angle) {
+  if (!Number.isFinite(angle)) return;
+  angle = Math.max(0, Math.min(180, angle));
+  // จุดอยู่บนเส้นโค้ง: 90° = กลางบนสุด
+  $("dot").style.transform = "rotate(" + (angle - 90) + "deg)";
+  $("servoValue").textContent = Math.round(angle) + "°";
+}
+
+function renderLdr(el, v) {
+  el.textContent = Number(v) === 0 ? "LOW (0)" : "HIGH (1)";
+}
+
+async function refreshDashboard() {
+  if (refreshing) return;
+  refreshing = true;
+
+  // อ่านทุก pin พร้อมกัน ถ้าตัวไหนพังก็ไม่กระทบตัวอื่น
+  const pins = [PIN.TEMP, PIN.LDR_UP, PIN.LDR_DOWN, PIN.SERVO_POS, PIN.MODE];
+  const res = await Promise.allSettled(pins.map(apiGet));
+
+  res.forEach((r, i) => {
+    if (r.status !== "fulfilled" || !Number.isFinite(r.value)) {
+      console.warn("V" + pins[i] + " failed", r.reason);
+      if (i === 0) $("temperature").innerHTML = "ERR";
+      return;
+    }
+    const v = r.value;
+    if (i === 0) {
+      $("temperature").innerHTML = v.toFixed(1) + "<small>°C</small>";
+      $("temperature").classList.toggle("hot", v >= TEMP_LIMIT);
+    }
+    if (i === 1) renderLdr($("ldrUp"), v);
+    if (i === 2) renderLdr($("ldrDown"), v);
+    if (i === 3) {
+      renderGauge(v);
+      // ซิงก์ slider ตามตำแหน่งจริงเฉพาะตอนโหมด AUTO และไม่ได้ลากอยู่
+      if (currentMode === 0 && !dragging) {
+        $("servoSlider").value = Math.round(v);
+        $("sliderValue").textContent = Math.round(v) + "°";
+        setFill(Math.round(v));
+      }
+    }
+    if (i === 4 && Date.now() > modeLockUntil && (v === 0 || v === 1)) renderMode(v);
+  });
+
+  refreshing = false;
+}
+
+async function toggleMode() {
+  const old = currentMode;
+  const next = old === 0 ? 1 : 0;
+  renderMode(next);
+  modeLockUntil = Date.now() + 5000;   // ไม่ให้ refresh ทับใน 5 วินาที
+
+  try {
+    await writePin(PIN.MODE, next);
+  } catch (e) {
+    console.error("MODE WRITE ERROR:", e);
+    modeLockUntil = 0;
+    renderMode(old);
+  }
+}
+
+async function sendServo(angle) {
+  angle = Math.round(angle);
+  if (angle === lastSent) return;
+  lastSent = angle;
+  try {
+    await writePin(PIN.SERVO_CTRL, angle);
+  } catch (e) {
+    console.error("SERVO WRITE ERROR:", e);
+    lastSent = -1;
+  }
+}
+
+const slider = $("servoSlider");
+
+slider.addEventListener("pointerdown", () => { dragging = true; });
+window.addEventListener("pointerup", () => { dragging = false; });
+slider.addEventListener("touchstart", () => { dragging = true; }, { passive: true });
+slider.addEventListener("touchend", () => { dragging = false; });
+
+// ส่งระหว่างลาก (จำกัดทุก ~150ms) เพื่อให้แผงเอียงตามทันที
+slider.addEventListener("input", () => {
+  const v = Number(slider.value);
+  $("sliderValue").textContent = v + "°";
+  setFill(v);
+  if (currentMode !== 1) return;
+  const now = Date.now();
+  if (now - lastSliderSend > 150) {
+    lastSliderSend = now;
+    sendServo(v);
+  }
+});
+
+// ปล่อยนิ้ว: ส่งค่าสุดท้ายแน่นอน
+slider.addEventListener("change", () => {
+  dragging = false;
+  if (currentMode === 1) sendServo(Number(slider.value));
+});
+
+setFill(90);
+renderGauge(0);
+renderMode(0);
+refreshDashboard();
+setInterval(refreshDashboard, 2000);
+</script>
+</body>
+</html>
